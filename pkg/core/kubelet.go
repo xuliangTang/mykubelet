@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 
 	"time"
 )
@@ -101,9 +102,30 @@ func NewMyKubelet(client kubernetes.Interface, hostName string) *MyKubelet {
 	return mykubelet
 }
 
+// SetOnAdd 设置回调
+func (m MyKubelet) SetOnAdd(onAdd func(pod *v1.Pod) error) {
+	m.PodWorkers.(*podWorkers).OnAdd = onAdd
+}
+
 func (m MyKubelet) StartStatusManager() {
-	fmt.Println("start statusManager")
+	klog.Info("statusManager开始启动")
 	m.statusManager.Start()
+}
+
+func (m MyKubelet) Run() {
+	klog.Info("边缘Kublet开始启动")
+	m.StartStatusManager()
+
+	for item := range m.PodConfig.Updates() {
+		switch item.Op {
+		case kubetypes.ADD:
+			m.HandlePodAdditions(item.Pods)
+		case kubetypes.UPDATE, kubetypes.DELETE:
+			m.HandlePodUpdates(item.Pods)
+		case kubetypes.REMOVE:
+			m.HandlePodRemoves(item.Pods)
+		}
+	}
 }
 
 func (m MyKubelet) HandlePodAdditions(pods []*v1.Pod) {

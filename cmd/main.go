@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/xuliangTang/mykubelet/pkg/core"
-	"github.com/xuliangTang/mykubelet/pkg/kubelet/types"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -13,19 +13,11 @@ const hostName = "mylain"
 func main() {
 	client := initClient()
 	myKubelet := core.NewMyKubelet(client, hostName)
-
-	fmt.Println("开始监听")
-	myKubelet.StartStatusManager()
-	for item := range myKubelet.PodConfig.Updates() {
-		switch item.Op {
-		case types.ADD:
-			myKubelet.HandlePodAdditions(item.Pods)
-		case types.UPDATE, types.DELETE:
-			myKubelet.HandlePodUpdates(item.Pods)
-		case types.REMOVE:
-			myKubelet.HandlePodRemoves(item.Pods)
-		}
-	}
+	myKubelet.SetOnAdd(func(pod *v1.Pod) error {
+		fmt.Println("onAdd()", pod.Name)
+		return nil
+	})
+	myKubelet.Run()
 }
 
 func initClient() *kubernetes.Clientset {

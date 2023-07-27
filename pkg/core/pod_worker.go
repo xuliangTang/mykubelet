@@ -405,6 +405,9 @@ type podWorkers struct {
 	// podCache stores kubecontainer.PodStatus for all pods.
 	podCache   kubecontainer.Cache
 	podManager pod.Manager
+
+	// 回调函数
+	OnAdd func(pod *v1.Pod) error
 }
 
 func NewPodWorkers(
@@ -877,7 +880,13 @@ func (p *podWorkers) managePodLoop(podUpdates <-chan podWork) {
 		pod := update.Options.Pod
 		fmt.Println("有pod进来了, name=", pod.Name, "uid=", pod.UID)
 		if insertErr := insertPodCache(pod.UID, p.podManager, p.podCache); insertErr != nil {
-			fmt.Printf("插入缓存失败:%s\n", insertErr)
+			klog.Errorln("插入缓存失败:", insertErr)
+		} else {
+			if p.OnAdd != nil {
+				if onAddErr := p.OnAdd(pod); onAddErr != nil {
+					klog.Errorln("执行onAdd()回调出错:", onAddErr)
+				}
+			}
 		}
 
 		// Decide whether to start the pod. If the pod was terminated prior to the pod being allowed
