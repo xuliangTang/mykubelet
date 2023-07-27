@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ngx-mylain
+spec:
+  nodeName: mylain
+  containers:
+    - name: ngx
+      image: nginx:1.18-alpine
