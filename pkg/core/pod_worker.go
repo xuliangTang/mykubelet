@@ -407,7 +407,7 @@ type podWorkers struct {
 	podManager pod.Manager
 
 	// 回调函数
-	OnAdd func(pod *v1.Pod) error
+	OnPreAdd CallBackFn
 }
 
 func NewPodWorkers(
@@ -882,9 +882,9 @@ func (p *podWorkers) managePodLoop(podUpdates <-chan podWork) {
 		if insertErr := insertPodCache(pod.UID, p.podManager, p.podCache); insertErr != nil {
 			klog.Errorln("插入缓存失败:", insertErr)
 		} else {
-			if p.OnAdd != nil {
-				if onAddErr := p.OnAdd(pod); onAddErr != nil {
-					klog.Errorln("执行onAdd()回调出错:", onAddErr)
+			if p.OnPreAdd != nil {
+				if onPreAddErr := p.OnPreAdd(pod); onPreAddErr != nil {
+					klog.Errorln("执行onAdd()回调出错:", onPreAddErr)
 				}
 			}
 		}

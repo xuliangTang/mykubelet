@@ -22,9 +22,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
-
 	"time"
 )
+
+type CallBackFn func(pod *v1.Pod) error
 
 type MyKubelet struct {
 	KubeClient    kubernetes.Interface
@@ -37,6 +38,9 @@ type MyKubelet struct {
 	probeManager  prober.Manager
 	reasonCache   *ReasonCache
 	Clock         clock.Clock
+
+	// 回调
+	onAdd, onUpdate, onDelete, onRemove CallBackFn
 }
 
 func NewMyKubelet(client kubernetes.Interface, hostName string) *MyKubelet {
@@ -102,9 +106,25 @@ func NewMyKubelet(client kubernetes.Interface, hostName string) *MyKubelet {
 	return mykubelet
 }
 
-// SetOnAdd 设置回调
-func (m MyKubelet) SetOnAdd(onAdd func(pod *v1.Pod) error) {
-	m.PodWorkers.(*podWorkers).OnAdd = onAdd
+// SetOnPreAdd 设置podWorker接收到updatess事件时的回调
+func (m *MyKubelet) SetOnPreAdd(onPreAdd CallBackFn) {
+	m.PodWorkers.(*podWorkers).OnPreAdd = onPreAdd
+}
+
+func (m *MyKubelet) SetOnAdd(onAdd CallBackFn) {
+	m.onAdd = onAdd
+}
+
+func (m *MyKubelet) SetOnUpdate(onUpdate CallBackFn) {
+	m.onUpdate = onUpdate
+}
+
+func (m *MyKubelet) SetOnDelete(onDelete CallBackFn) {
+	m.onDelete = onDelete
+}
+
+func (m *MyKubelet) SetOnRemove(onRemove CallBackFn) {
+	m.onRemove = onRemove
 }
 
 func (m MyKubelet) StartStatusManager() {
@@ -120,8 +140,10 @@ func (m MyKubelet) Run() {
 		switch item.Op {
 		case kubetypes.ADD:
 			m.HandlePodAdditions(item.Pods)
-		case kubetypes.UPDATE, kubetypes.DELETE:
+		case kubetypes.UPDATE:
 			m.HandlePodUpdates(item.Pods)
+		case kubetypes.DELETE:
+			m.HandlePodDelete(item.Pods)
 		case kubetypes.REMOVE:
 			m.HandlePodRemoves(item.Pods)
 		}
@@ -132,6 +154,12 @@ func (m MyKubelet) HandlePodAdditions(pods []*v1.Pod) {
 	for _, p := range pods {
 		m.PodManager.AddPod(p)
 		m.dispatchWork(kubetypes.SyncPodCreate, p, m.Clock.Now())
+
+		if m.onAdd != nil {
+			if err := m.onAdd(p); err != nil {
+				klog.Errorln(err)
+			}
+		}
 	}
 }
 
@@ -139,6 +167,25 @@ func (m MyKubelet) HandlePodUpdates(pods []*v1.Pod) {
 	for _, p := range pods {
 		m.PodManager.UpdatePod(p)
 		m.dispatchWork(kubetypes.SyncPodUpdate, p, m.Clock.Now())
+
+		if m.onAdd != nil {
+			if err := m.onUpdate(p); err != nil {
+				klog.Errorln(err)
+			}
+		}
+	}
+}
+
+func (m MyKubelet) HandlePodDelete(pods []*v1.Pod) {
+	for _, p := range pods {
+		m.PodManager.UpdatePod(p)
+		m.dispatchWork(kubetypes.SyncPodUpdate, p, m.Clock.Now())
+
+		if m.onDelete != nil {
+			if err := m.onDelete(p); err != nil {
+				klog.Errorln(err)
+			}
+		}
 	}
 }
 
@@ -146,6 +193,12 @@ func (m MyKubelet) HandlePodRemoves(pods []*v1.Pod) {
 	for _, p := range pods {
 		m.PodManager.DeletePod(p)
 		m.dispatchWork(kubetypes.SyncPodKill, p, m.Clock.Now())
+
+		if m.onAdd != nil {
+			if err := m.onRemove(p); err != nil {
+				klog.Errorln(err)
+			}
+		}
 	}
 }
 

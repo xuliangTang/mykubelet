@@ -13,10 +13,32 @@ const hostName = "mylain"
 func main() {
 	client := initClient()
 	myKubelet := core.NewMyKubelet(client, hostName)
+
+	myKubelet.SetOnPreAdd(func(pod *v1.Pod) error {
+		fmt.Println("onPreAdd()", pod.Name)
+		return nil
+	})
+
 	myKubelet.SetOnAdd(func(pod *v1.Pod) error {
 		fmt.Println("onAdd()", pod.Name)
 		return nil
 	})
+
+	myKubelet.SetOnUpdate(func(pod *v1.Pod) error {
+		fmt.Println("onUpdate()", pod.Name)
+		return nil
+	})
+
+	myKubelet.SetOnDelete(func(pod *v1.Pod) error {
+		fmt.Println("onDelete()", pod.Name)
+		return nil
+	})
+
+	myKubelet.SetOnRemove(func(pod *v1.Pod) error {
+		fmt.Println("onRemove()", pod.Name)
+		return nil
+	})
+
 	myKubelet.Run()
 }
 
