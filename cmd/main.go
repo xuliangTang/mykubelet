@@ -23,6 +23,13 @@ func main() {
 		fmt.Println("onAdd()", opts.Pod.Name)
 		opts.AddEvent("onAdd", "success")
 
+		// 获取容器cmd
+		cmds := opts.GetCmdAndArgs()
+		for _, cmd := range cmds {
+			fmt.Println(cmd.Args)
+		}
+
+		// 设置容器为completed
 		time.Sleep(time.Second * 5)
 		opts.SetPodCompleted()
 

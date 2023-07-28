@@ -9,3 +9,5 @@ spec:
   containers:
     - name: ngx
       image: nginx:1.18-alpine
+      command: [ "/bin/sh" ]
+      args: [ "-c", "echo hello" ]

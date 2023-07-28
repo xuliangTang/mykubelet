@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/clock"
+	"os/exec"
 	"time"
 )
 
@@ -33,6 +34,26 @@ type CallBackOptions struct {
 
 	eventRecorder record.EventRecorder
 	podCache      kubecontainer.Cache
+}
+
+// GetCmdAndArgs 获取pod的commands和args
+func (c *CallBackOptions) GetCmdAndArgs() []*exec.Cmd {
+	var ret []*exec.Cmd
+
+	for _, container := range c.Pod.Spec.Containers {
+		if len(container.Command) == 0 {
+			continue
+		}
+
+		var args []string
+		if len(container.Command) > 1 {
+			args = append(args, container.Command[1:]...)
+		}
+		args = append(args, container.Args...)
+		ret = append(ret, exec.Command(container.Command[0], args...))
+	}
+
+	return ret
 }
 
 // AddEvent 记录normal事件
