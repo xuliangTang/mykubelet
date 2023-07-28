@@ -878,7 +878,7 @@ func (p *podWorkers) managePodLoop(podUpdates <-chan podWork) {
 	var podStarted bool
 	for update := range podUpdates {
 		pod := update.Options.Pod
-		fmt.Println("有pod进来了, name=", pod.Name, "uid=", pod.UID)
+		// fmt.Println("有pod进来了, name=", pod.Name, "uid=", pod.UID)
 		if insertErr := insertPodCache(pod.UID, p.podManager, p.podCache); insertErr != nil {
 			klog.Errorln("插入缓存失败:", insertErr)
 		} else {
@@ -886,6 +886,7 @@ func (p *podWorkers) managePodLoop(podUpdates <-chan podWork) {
 				opts := &CallBackOptions{
 					Pod:           pod,
 					eventRecorder: p.recorder,
+					podCache:      p.podCache,
 				}
 				if onPreAddErr := p.OnPreAdd(opts); onPreAddErr != nil {
 					klog.Errorln("执行onAdd()回调出错:", onPreAddErr)

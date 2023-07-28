@@ -5,6 +5,7 @@ import (
 	"github.com/xuliangTang/mykubelet/pkg/core"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"time"
 )
 
 const hostName = "mylain"
@@ -21,6 +22,10 @@ func main() {
 	myKubelet.SetOnAdd(func(opts *core.CallBackOptions) error {
 		fmt.Println("onAdd()", opts.Pod.Name)
 		opts.AddEvent("onAdd", "success")
+
+		time.Sleep(time.Second * 5)
+		opts.SetPodCompleted()
+
 		return nil
 	})
 

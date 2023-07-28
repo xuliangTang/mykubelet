@@ -37,3 +37,34 @@ func SetPodReady(pod *v1.Pod) *container.PodStatus {
 
 	return status
 }
+
+// SetPodCompleted 构建podStatus状态为completed
+func SetPodCompleted(pod *v1.Pod) *container.PodStatus {
+	status := &container.PodStatus{
+		ID:        types.UID(pod.UID),
+		Name:      pod.Name,
+		Namespace: pod.Namespace,
+		SandboxStatuses: []*runtimeapi.PodSandboxStatus{
+			{
+				Id:    string(pod.UID),
+				State: runtimeapi.PodSandboxState_SANDBOX_NOTREADY,
+			},
+		},
+	}
+
+	var containerStatus []*container.Status
+	for _, c := range pod.Spec.Containers {
+		cs := &container.Status{
+			Name:       c.Name,
+			Image:      c.Image,
+			State:      container.ContainerStateExited,
+			ExitCode:   0,
+			Reason:     "Completed",
+			FinishedAt: time.Now(),
+		}
+		containerStatus = append(containerStatus, cs)
+	}
+	status.ContainerStatuses = containerStatus
+
+	return status
+}

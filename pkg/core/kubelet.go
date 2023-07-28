@@ -17,25 +17,33 @@ import (
 	"github.com/xuliangTang/mykubelet/pkg/kubelet/util/queue"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 	"time"
 )
 
 // CallBackOptions 回调参数
 type CallBackOptions struct {
-	Pod           *v1.Pod
+	Pod *v1.Pod
+
 	eventRecorder record.EventRecorder
+	podCache      kubecontainer.Cache
 }
 
 // AddEvent 记录normal事件
-func (c CallBackOptions) AddEvent(reason, msg string) {
+func (c *CallBackOptions) AddEvent(reason, msg string) {
 	c.eventRecorder.Event(c.Pod, v1.EventTypeNormal, reason, msg)
+}
+
+// SetPodCompleted 设置pod状态为completed
+func (c *CallBackOptions) SetPodCompleted() {
+	podStatus := SetPodCompleted(c.Pod)
+	c.podCache.Set(c.Pod.UID, podStatus, nil, time.Now())
 }
 
 type CallBackFn func(opts *CallBackOptions) error
@@ -50,7 +58,7 @@ type MyKubelet struct {
 	statusManager status.Manager
 	probeManager  prober.Manager
 	reasonCache   *ReasonCache
-	Clock         clock.Clock
+	Clock         clock.RealClock
 
 	// 回调
 	onAdd, onUpdate, onDelete, onRemove CallBackFn
@@ -94,7 +102,7 @@ func NewMyKubelet(client kubernetes.Interface, hostName string) *MyKubelet {
 	}
 
 	// 初始化podWorker
-	mykubelet.Clock = &clock.RealClock{}
+	mykubelet.Clock = clock.RealClock{}
 	mykubelet.PodCache = kubecontainer.NewCache()
 	workQueue := queue.NewBasicWorkQueue(mykubelet.Clock)
 	mykubelet.PodWorkers = NewPodWorkers(
@@ -146,12 +154,12 @@ func (m *MyKubelet) SetOnRemove(onRemove CallBackFn) {
 	m.onRemove = onRemove
 }
 
-func (m MyKubelet) StartStatusManager() {
+func (m *MyKubelet) StartStatusManager() {
 	klog.Info("statusManager开始启动")
 	m.statusManager.Start()
 }
 
-func (m MyKubelet) Run() {
+func (m *MyKubelet) Run() {
 	klog.Info("边缘Kubelet开始启动")
 	m.StartStatusManager()
 
@@ -169,7 +177,7 @@ func (m MyKubelet) Run() {
 	}
 }
 
-func (m MyKubelet) HandlePodAdditions(pods []*v1.Pod) {
+func (m *MyKubelet) HandlePodAdditions(pods []*v1.Pod) {
 	for _, p := range pods {
 		m.PodManager.AddPod(p)
 		m.dispatchWork(kubetypes.SyncPodCreate, p, m.Clock.Now())
@@ -178,6 +186,7 @@ func (m MyKubelet) HandlePodAdditions(pods []*v1.Pod) {
 			opts := &CallBackOptions{
 				Pod:           p,
 				eventRecorder: m.PodWorkers.(*podWorkers).recorder,
+				podCache:      m.PodCache,
 			}
 			if err := m.onAdd(opts); err != nil {
 				klog.Errorln(err)
@@ -186,15 +195,16 @@ func (m MyKubelet) HandlePodAdditions(pods []*v1.Pod) {
 	}
 }
 
-func (m MyKubelet) HandlePodUpdates(pods []*v1.Pod) {
+func (m *MyKubelet) HandlePodUpdates(pods []*v1.Pod) {
 	for _, p := range pods {
 		m.PodManager.UpdatePod(p)
 		m.dispatchWork(kubetypes.SyncPodUpdate, p, m.Clock.Now())
 
-		if m.onAdd != nil {
+		if m.onUpdate != nil {
 			opts := &CallBackOptions{
 				Pod:           p,
 				eventRecorder: m.PodWorkers.(*podWorkers).recorder,
+				podCache:      m.PodCache,
 			}
 			if err := m.onUpdate(opts); err != nil {
 				klog.Errorln(err)
@@ -203,7 +213,7 @@ func (m MyKubelet) HandlePodUpdates(pods []*v1.Pod) {
 	}
 }
 
-func (m MyKubelet) HandlePodDelete(pods []*v1.Pod) {
+func (m *MyKubelet) HandlePodDelete(pods []*v1.Pod) {
 	for _, p := range pods {
 		m.PodManager.UpdatePod(p)
 		m.dispatchWork(kubetypes.SyncPodUpdate, p, m.Clock.Now())
@@ -212,6 +222,7 @@ func (m MyKubelet) HandlePodDelete(pods []*v1.Pod) {
 			opts := &CallBackOptions{
 				Pod:           p,
 				eventRecorder: m.PodWorkers.(*podWorkers).recorder,
+				podCache:      m.PodCache,
 			}
 			if err := m.onDelete(opts); err != nil {
 				klog.Errorln(err)
@@ -220,15 +231,16 @@ func (m MyKubelet) HandlePodDelete(pods []*v1.Pod) {
 	}
 }
 
-func (m MyKubelet) HandlePodRemoves(pods []*v1.Pod) {
+func (m *MyKubelet) HandlePodRemoves(pods []*v1.Pod) {
 	for _, p := range pods {
 		m.PodManager.DeletePod(p)
 		m.dispatchWork(kubetypes.SyncPodKill, p, m.Clock.Now())
 
-		if m.onAdd != nil {
+		if m.onRemove != nil {
 			opts := &CallBackOptions{
 				Pod:           p,
 				eventRecorder: m.PodWorkers.(*podWorkers).recorder,
+				podCache:      m.PodCache,
 			}
 			if err := m.onRemove(opts); err != nil {
 				klog.Errorln(err)
@@ -237,7 +249,7 @@ func (m MyKubelet) HandlePodRemoves(pods []*v1.Pod) {
 	}
 }
 
-func (m MyKubelet) dispatchWork(updateType kubetypes.SyncPodType, pod *v1.Pod, start time.Time) {
+func (m *MyKubelet) dispatchWork(updateType kubetypes.SyncPodType, pod *v1.Pod, start time.Time) {
 	m.PodWorkers.UpdatePod(UpdatePodOptions{
 		UpdateType: updateType,
 		Pod:        pod,
@@ -248,22 +260,24 @@ func (m MyKubelet) dispatchWork(updateType kubetypes.SyncPodType, pod *v1.Pod, s
 func (m *MyKubelet) syncPod(ctx context.Context, updateType kubetypes.SyncPodType, pod, mirrorPod *v1.Pod, podStatus *kubecontainer.PodStatus) (isTerminal bool, err error) {
 	fmt.Println("测试的syncPod")
 
-	isTerminal = false
+	//isTerminal = false
 	apiPodStatus := m.generateAPIPodStatus(pod, podStatus)
 	m.statusManager.SetPodStatus(pod, apiPodStatus)
-	if apiPodStatus.Phase == v1.PodSucceeded || apiPodStatus.Phase == v1.PodFailed {
-		isTerminal = true
-	}
-	return isTerminal, nil
+	//if apiPodStatus.Phase == v1.PodSucceeded || apiPodStatus.Phase == v1.PodFailed {
+	//	isTerminal = true
+	//}
+	return true, nil
 }
 
 func (m *MyKubelet) syncTerminatingPod(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus, runningPod *kubecontainer.Pod, gracePeriod *int64, podStatusFn func(*v1.PodStatus)) error {
 	fmt.Println("测试的syncTerminatingPod")
+	apiPodStatus := m.generateAPIPodStatus(pod, podStatus)
+	m.statusManager.SetPodStatus(pod, apiPodStatus)
 	return nil
 }
 
 func (m *MyKubelet) syncTerminatedPod(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus) error {
-	fmt.Println("测试的syncTerminatingPod")
+	fmt.Println("测试的syncTerminatedPod 收尾工作")
 	return nil
 }
 
