@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/xuliangTang/mykubelet/pkg/core"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -14,28 +13,30 @@ func main() {
 	client := initClient()
 	myKubelet := core.NewMyKubelet(client, hostName)
 
-	myKubelet.SetOnPreAdd(func(pod *v1.Pod) error {
-		fmt.Println("onPreAdd()", pod.Name)
+	myKubelet.SetOnPreAdd(func(opts *core.CallBackOptions) error {
+		fmt.Println("onPreAdd()", opts.Pod.Name)
 		return nil
 	})
 
-	myKubelet.SetOnAdd(func(pod *v1.Pod) error {
-		fmt.Println("onAdd()", pod.Name)
+	myKubelet.SetOnAdd(func(opts *core.CallBackOptions) error {
+		fmt.Println("onAdd()", opts.Pod.Name)
+		opts.AddEvent("onAdd", "success")
 		return nil
 	})
 
-	myKubelet.SetOnUpdate(func(pod *v1.Pod) error {
-		fmt.Println("onUpdate()", pod.Name)
+	myKubelet.SetOnUpdate(func(opts *core.CallBackOptions) error {
+		fmt.Println("onUpdate()", opts.Pod.Name)
+		opts.AddEvent("onUpdate", "success")
 		return nil
 	})
 
-	myKubelet.SetOnDelete(func(pod *v1.Pod) error {
-		fmt.Println("onDelete()", pod.Name)
+	myKubelet.SetOnDelete(func(opts *core.CallBackOptions) error {
+		fmt.Println("onDelete()", opts.Pod.Name)
 		return nil
 	})
 
-	myKubelet.SetOnRemove(func(pod *v1.Pod) error {
-		fmt.Println("onRemove()", pod.Name)
+	myKubelet.SetOnRemove(func(opts *core.CallBackOptions) error {
+		fmt.Println("onRemove()", opts.Pod.Name)
 		return nil
 	})
 

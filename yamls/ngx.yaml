@@ -3,7 +3,7 @@ kind: Pod
 metadata:
   name: ngx-mylain
   labels:
-    version: v1
+    version: v2
 spec:
   nodeName: mylain
   containers:

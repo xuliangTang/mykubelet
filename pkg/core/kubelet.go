@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/xuliangTang/mykubelet/pkg/api/legacyscheme"
+	apisv1 "github.com/xuliangTang/mykubelet/pkg/apis/core/v1"
 	"github.com/xuliangTang/mykubelet/pkg/kubelet/config"
 	"github.com/xuliangTang/mykubelet/pkg/kubelet/configmap"
 	kubecontainer "github.com/xuliangTang/mykubelet/pkg/kubelet/container"
@@ -19,13 +20,25 @@ import (
 	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"time"
 )
 
-type CallBackFn func(pod *v1.Pod) error
+// CallBackOptions 回调参数
+type CallBackOptions struct {
+	Pod           *v1.Pod
+	eventRecorder record.EventRecorder
+}
+
+// AddEvent 记录normal事件
+func (c CallBackOptions) AddEvent(reason, msg string) {
+	c.eventRecorder.Event(c.Pod, v1.EventTypeNormal, reason, msg)
+}
+
+type CallBackFn func(opts *CallBackOptions) error
 
 type MyKubelet struct {
 	KubeClient    kubernetes.Interface
@@ -58,7 +71,13 @@ func NewMyKubelet(client kubernetes.Interface, hostName string) *MyKubelet {
 	podManager := pod.NewBasicPodManager(mirrorPodClient, secretManager, configMapManager)
 
 	// 初始化podConfig
-	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster := record.NewBroadcaster()                     // 事件分发器广播
+	if err := apisv1.AddToScheme(legacyscheme.Scheme); err != nil { // 注册scheme
+		klog.Fatalln(err)
+	}
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{ // 指定事件接收
+		Interface: client.CoreV1().Events(""),
+	})
 	eventRecorder := eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{Component: "kubelet", Host: hostName})
 	podConfig := config.NewPodConfig(config.PodConfigNotificationIncremental, eventRecorder)
 	// 注入clientset
@@ -133,7 +152,7 @@ func (m MyKubelet) StartStatusManager() {
 }
 
 func (m MyKubelet) Run() {
-	klog.Info("边缘Kublet开始启动")
+	klog.Info("边缘Kubelet开始启动")
 	m.StartStatusManager()
 
 	for item := range m.PodConfig.Updates() {
@@ -156,7 +175,11 @@ func (m MyKubelet) HandlePodAdditions(pods []*v1.Pod) {
 		m.dispatchWork(kubetypes.SyncPodCreate, p, m.Clock.Now())
 
 		if m.onAdd != nil {
-			if err := m.onAdd(p); err != nil {
+			opts := &CallBackOptions{
+				Pod:           p,
+				eventRecorder: m.PodWorkers.(*podWorkers).recorder,
+			}
+			if err := m.onAdd(opts); err != nil {
 				klog.Errorln(err)
 			}
 		}
@@ -169,7 +192,11 @@ func (m MyKubelet) HandlePodUpdates(pods []*v1.Pod) {
 		m.dispatchWork(kubetypes.SyncPodUpdate, p, m.Clock.Now())
 
 		if m.onAdd != nil {
-			if err := m.onUpdate(p); err != nil {
+			opts := &CallBackOptions{
+				Pod:           p,
+				eventRecorder: m.PodWorkers.(*podWorkers).recorder,
+			}
+			if err := m.onUpdate(opts); err != nil {
 				klog.Errorln(err)
 			}
 		}
@@ -182,7 +209,11 @@ func (m MyKubelet) HandlePodDelete(pods []*v1.Pod) {
 		m.dispatchWork(kubetypes.SyncPodUpdate, p, m.Clock.Now())
 
 		if m.onDelete != nil {
-			if err := m.onDelete(p); err != nil {
+			opts := &CallBackOptions{
+				Pod:           p,
+				eventRecorder: m.PodWorkers.(*podWorkers).recorder,
+			}
+			if err := m.onDelete(opts); err != nil {
 				klog.Errorln(err)
 			}
 		}
@@ -195,7 +226,11 @@ func (m MyKubelet) HandlePodRemoves(pods []*v1.Pod) {
 		m.dispatchWork(kubetypes.SyncPodKill, p, m.Clock.Now())
 
 		if m.onAdd != nil {
-			if err := m.onRemove(p); err != nil {
+			opts := &CallBackOptions{
+				Pod:           p,
+				eventRecorder: m.PodWorkers.(*podWorkers).recorder,
+			}
+			if err := m.onRemove(opts); err != nil {
 				klog.Errorln(err)
 			}
 		}

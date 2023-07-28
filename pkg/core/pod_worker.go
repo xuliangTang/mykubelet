@@ -883,7 +883,11 @@ func (p *podWorkers) managePodLoop(podUpdates <-chan podWork) {
 			klog.Errorln("插入缓存失败:", insertErr)
 		} else {
 			if p.OnPreAdd != nil {
-				if onPreAddErr := p.OnPreAdd(pod); onPreAddErr != nil {
+				opts := &CallBackOptions{
+					Pod:           pod,
+					eventRecorder: p.recorder,
+				}
+				if onPreAddErr := p.OnPreAdd(opts); onPreAddErr != nil {
 					klog.Errorln("执行onAdd()回调出错:", onPreAddErr)
 				}
 			}
