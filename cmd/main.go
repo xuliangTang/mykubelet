@@ -24,9 +24,17 @@ func main() {
 		opts.AddEvent("onAdd", "success")
 
 		// 获取容器cmd
-		cmds := opts.GetCmdAndArgs()
+		//cmds := opts.GetCmdAndArgs()
+		//for _, cmd := range cmds {
+		//	fmt.Println(cmd.Args)
+		//}
+
+		cmds := opts.GetContainerCmds()
 		for _, cmd := range cmds {
-			fmt.Println(cmd.Args)
+			// 运行容器command
+			cmd.Run()
+			// 根据执行后的exitCode设置容器状态 0为正常退出(completed) 否则为错误(error)
+			opts.SetContainerExit(cmd.ContainerName, cmd.ExitCode)
 		}
 
 		// 设置容器为completed

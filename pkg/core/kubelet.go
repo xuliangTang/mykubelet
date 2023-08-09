@@ -56,6 +56,30 @@ func (c *CallBackOptions) GetCmdAndArgs() []*exec.Cmd {
 	return ret
 }
 
+// GetContainerCmds 获取pod的commands和args 封装为ContainerCmd对象
+func (c *CallBackOptions) GetContainerCmds() []*ContainerCmd {
+	var ret []*ContainerCmd
+
+	for _, container := range c.Pod.Spec.Containers {
+		if len(container.Command) == 0 {
+			continue
+		}
+
+		var args []string
+		if len(container.Command) > 1 {
+			args = append(args, container.Command[1:]...)
+		}
+		args = append(args, container.Args...)
+		cmd := exec.Command(container.Command[0], args...)
+		ret = append(ret, &ContainerCmd{
+			Cmd:           cmd,
+			ContainerName: container.Name,
+		})
+	}
+
+	return ret
+}
+
 // AddEvent 记录normal事件
 func (c *CallBackOptions) AddEvent(reason, msg string) {
 	c.eventRecorder.Event(c.Pod, v1.EventTypeNormal, reason, msg)
@@ -64,6 +88,12 @@ func (c *CallBackOptions) AddEvent(reason, msg string) {
 // SetPodCompleted 设置pod状态为completed
 func (c *CallBackOptions) SetPodCompleted() {
 	podStatus := SetPodCompleted(c.Pod)
+	c.podCache.Set(c.Pod.UID, podStatus, nil, time.Now())
+}
+
+// SetContainerExit 设置pod其中一个容器为退出
+func (c *CallBackOptions) SetContainerExit(containerName string, exitCode int) {
+	podStatus := SetContainerExit(c.Pod, containerName, exitCode)
 	c.podCache.Set(c.Pod.UID, podStatus, nil, time.Now())
 }
 

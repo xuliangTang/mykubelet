@@ -68,3 +68,48 @@ func SetPodCompleted(pod *v1.Pod) *container.PodStatus {
 
 	return status
 }
+
+// SetContainerExit 设置pod容器为退出状态
+func SetContainerExit(pod *v1.Pod, containerName string, exitCode int) *container.PodStatus {
+	var podState runtimeapi.PodSandboxState
+
+	if len(pod.Spec.Containers) == 1 {
+		podState = runtimeapi.PodSandboxState_SANDBOX_NOTREADY
+	} else {
+		podState = runtimeapi.PodSandboxState_SANDBOX_READY
+	}
+
+	status := &container.PodStatus{
+		ID:        pod.UID,
+		Name:      pod.Name,
+		Namespace: pod.Namespace,
+		SandboxStatuses: []*runtimeapi.PodSandboxStatus{
+			{
+				Id:    string(pod.UID),
+				State: podState,
+			},
+		},
+	}
+
+	var containerStatus []*container.Status
+	for _, c := range pod.Spec.Containers {
+		if c.Name != containerName {
+			continue
+		}
+		reason := "Error"
+		if exitCode == 0 {
+			reason = "Completed"
+		}
+		cs := &container.Status{
+			Name:       c.Name,
+			Image:      c.Image,
+			State:      container.ContainerStateExited,
+			ExitCode:   exitCode,
+			Reason:     reason,
+			FinishedAt: time.Now(),
+		}
+		containerStatus = append(containerStatus, cs)
+	}
+	status.ContainerStatuses = containerStatus
+	return status
+}
