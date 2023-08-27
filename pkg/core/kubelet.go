@@ -93,7 +93,16 @@ func (c *CallBackOptions) SetPodCompleted() {
 
 // SetContainerExit 设置pod其中一个容器为退出
 func (c *CallBackOptions) SetContainerExit(containerName string, exitCode int) {
-	podStatus := SetContainerExit(c.Pod, containerName, exitCode)
+	// 获取缓存中的podStatus
+	getPodStatus, err := c.podCache.Get(c.Pod.UID)
+	if err != nil {
+		klog.Error(err)
+		return
+	}
+
+	// 重新设置指定容器的状态
+	podStatus := SetContainerExit(getPodStatus, c.Pod, containerName, exitCode)
+
 	c.podCache.Set(c.Pod.UID, podStatus, nil, time.Now())
 }
 

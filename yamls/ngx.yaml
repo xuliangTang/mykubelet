@@ -10,4 +10,13 @@ spec:
     - name: ngx
       image: nginx:1.18-alpine
       command: [ "cmd" ]
-      args: [ "/c", "timeout /t 10 /nobreak > nul & exit 6 " ]
+      args: [ "/c", "timeout /t 10 /nobreak > nul & exit 0 " ]
+    - name: http
+      image: alpine:3.12
+      command: [ "D:/GoProject/mykubelet/httpsrv" ]
+      ports:
+        - containerPort: 8080
+    - name: ngx2
+      image: nginx:1.18-alpine
+      command: [ "cmd" ]
+      args: [ "/c", "timeout /t 10 /nobreak > nul & exit 0 " ]

@@ -31,10 +31,12 @@ func main() {
 
 		cmds := opts.GetContainerCmds()
 		for _, cmd := range cmds {
-			// 运行容器command
-			cmd.Run()
-			// 根据执行后的exitCode设置容器状态 0为正常退出(completed) 否则为错误(error)
-			opts.SetContainerExit(cmd.ContainerName, cmd.ExitCode)
+			go func(c *core.ContainerCmd) {
+				// 运行容器command
+				c.Run()
+				// 如果执行结束，根据执行后的exitCode设置容器状态 0为正常退出(completed) 否则为错误(error)
+				opts.SetContainerExit(c.ContainerName, c.ExitCode)
+			}(cmd)
 		}
 
 		// 设置容器为completed
